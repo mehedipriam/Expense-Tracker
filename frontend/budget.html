@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="theme-color" content="#13161e"/>
+  <title>SpendWise — Budget</title>
+  <link rel="stylesheet" href="style.css"/>
+  <style>
+    #budgets-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 14px;
+    }
+    @media (max-width: 600px) {
+      #budgets-grid { grid-template-columns: 1fr; }
+    }
+    .budget-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-left-width: 3px; border-radius: var(--radius); padding: 18px;
+    }
+    .budget-card-top {
+      display: flex; justify-content: space-between;
+      align-items: flex-start; margin-bottom: 12px; gap: 8px;
+    }
+    .budget-card-amounts {
+      display: flex; justify-content: space-between;
+      font-size: 13px; margin-bottom: 6px; flex-wrap: wrap; gap: 4px;
+    }
+    .budget-card-footer {
+      display: flex; justify-content: space-between;
+      font-size: 11px; color: var(--text-muted); margin-top: 6px;
+    }
+  </style>
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebar-mount"></div>
+
+  <div class="main-content">
+    <header class="page-header">
+      <button class="hamburger"><span></span><span></span><span></span></button>
+      <div class="page-title">
+        Budget Tracker
+        <div class="subtitle">Set limits. Track spending. Stay on target.</div>
+      </div>
+      <div class="header-actions">
+        <select id="month-picker"
+          style="background:var(--surface-2);border:1px solid var(--border);
+                 color:var(--text);border-radius:var(--radius-sm);
+                 padding:7px 10px;font-family:var(--font-sans);font-size:13px;
+                 cursor:pointer;outline:none;max-width:150px;">
+        </select>
+        <button class="btn btn-primary btn-sm" id="btn-add-budget">
+          <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+          </svg>
+          <span id="lbl-budget">Set Budget</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="page-body">
+
+      <!-- Summary stats -->
+      <div class="stats-grid" style="margin-bottom:20px;">
+        <div class="stat-card balance">
+          <div class="stat-label">Budgets Set</div>
+          <div class="stat-value balance" id="sum-count">—</div>
+          <div class="stat-sub">categories</div>
+        </div>
+        <div class="stat-card expense">
+          <div class="stat-label">Over Budget</div>
+          <div class="stat-value expense" id="sum-over">—</div>
+          <div class="stat-sub">exceeded</div>
+        </div>
+        <div class="stat-card income">
+          <div class="stat-label">Total Budget</div>
+          <div class="stat-value income" id="sum-total">—</div>
+          <div class="stat-sub">planned</div>
+        </div>
+      </div>
+
+      <!-- Budget cards -->
+      <div id="budgets-grid">
+        <div class="card">
+          <div class="empty-state" style="padding:40px 0;"><div class="spinner"></div></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modal-budget">
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <h2 class="modal-title">Set Monthly Budget</h2>
+      <button class="modal-close" id="modal-close">✕</button>
+    </div>
+    <form id="form-budget">
+      <div class="form-group">
+        <label>Category *</label>
+        <select id="bgt-category" required><option value="">Select category</option></select>
+      </div>
+      <div class="form-group">
+        <label>Monthly Limit (৳) *</label>
+        <input type="number" id="bgt-amount" placeholder="e.g. 5000" min="1" step="1" required/>
+      </div>
+      <div class="form-group">
+        <label>Month *</label>
+        <input type="month" id="bgt-month" required/>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost"   id="btn-cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="btn-save-budget">Save Budget</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script>
+document.getElementById('sidebar-mount').innerHTML = SIDEBAR_HTML;
+if (!initPage()) throw new Error();
+
+// Short label on very small screens
+if (window.innerWidth <= 400) document.getElementById('lbl-budget').textContent = 'Add';
+
+// Populate categories
+const expCats = CATEGORIES.filter(c => !['Salary','Freelance','Business','Investment'].includes(c));
+expCats.forEach(c => {
+  document.getElementById('bgt-category').innerHTML += `<option value="${c}">${c}</option>`;
+});
+
+// ── Month Picker ──────────────────────────────────────────────────────────
+const monthPicker = document.getElementById('month-picker');
+const nowMonth    = fmt.currentMonth();
+
+for (let i = -3; i <= 1; i++) {
+  const d = new Date();
+  d.setDate(1); d.setMonth(d.getMonth() + i);
+  const val   = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  const label = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  monthPicker.innerHTML += `<option value="${val}" ${val===nowMonth?'selected':''}>${label}</option>`;
+}
+
+document.getElementById('bgt-month').value = nowMonth;
+monthPicker.addEventListener('change', loadBudgets);
+
+// ── Load ──────────────────────────────────────────────────────────────────
+async function loadBudgets() {
+  const month = monthPicker.value;
+  const grid  = document.getElementById('budgets-grid');
+  grid.innerHTML = '<div class="card"><div class="empty-state" style="padding:40px 0;"><div class="spinner"></div></div></div>';
+
+  try {
+    const res     = await api.get('/budgets', { month });
+    const budgets = res.data;
+
+    document.getElementById('sum-count').textContent = budgets.length;
+    document.getElementById('sum-over').textContent  = budgets.filter(b => b.overBudget).length;
+    const total = budgets.reduce((s, b) => s + Number(b.monthlyLimit||0), 0);
+    document.getElementById('sum-total').textContent = fmt.currency(total);
+
+    if (!budgets.length) {
+      grid.innerHTML = `
+        <div class="card" style="grid-column:1/-1;">
+          <div class="empty-state" style="padding:60px 0;">
+            <div class="empty-icon">🎯</div>
+            <p>No budgets set for ${fmt.month(month)}</p>
+            <button class="btn btn-primary" style="margin-top:16px;"
+                    onclick="document.getElementById('btn-add-budget').click()">
+              Set your first budget
+            </button>
+          </div>
+        </div>`;
+      return;
+    }
+
+    grid.innerHTML = budgets.map(b => {
+      const pct   = Math.min(b.usagePercentage, 100);
+      const fill  = b.overBudget ? 'over' : (b.usagePercentage >= 80 ? 'warning' : '');
+      const color = b.overBudget ? 'var(--expense)' : (b.usagePercentage >= 80 ? 'var(--warning)' : 'var(--income)');
+      const left  = Math.max(0, Number(b.monthlyLimit) - Number(b.spent));
+      return `
+      <div class="budget-card" style="border-left-color:${color};">
+        <div class="budget-card-top">
+          <div style="min-width:0;">
+            <div style="font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+              ${b.category}
+            </div>
+            <div class="text-muted text-xs">${fmt.month(b.month)}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+            ${b.overBudget ? '<span class="badge badge-expense">⚠ Over!</span>' : ''}
+            <button class="btn btn-danger btn-sm btn-icon"
+                    onclick="deleteBudget('${b.id}')" title="Delete">🗑️</button>
+          </div>
+        </div>
+        <div class="budget-card-amounts">
+          <span>Spent: <strong class="${b.overBudget?'text-expense':''}">${fmt.currency(b.spent)}</strong></span>
+          <span class="text-muted">Limit: ${fmt.currency(b.monthlyLimit)}</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill ${fill}" style="width:${pct}%;"></div>
+        </div>
+        <div class="budget-card-footer">
+          <span>${b.usagePercentage.toFixed(1)}% used</span>
+          <span>Left: <strong style="color:var(--text);">${fmt.currency(left)}</strong></span>
+        </div>
+      </div>`;
+    }).join('');
+
+  } catch (err) {
+    Toast.error('Failed to load budgets');
+    grid.innerHTML = '<div class="card"><div class="empty-state"><p>Error loading budgets</p></div></div>';
+  }
+}
+
+// ── Delete ────────────────────────────────────────────────────────────────
+async function deleteBudget(id) {
+  if (!confirm('Delete this budget?')) return;
+  try { await api.delete(`/budgets/${id}`); Toast.success('Deleted!'); loadBudgets(); }
+  catch (err) { Toast.error('Failed to delete'); }
+}
+
+// ── Modal ─────────────────────────────────────────────────────────────────
+document.getElementById('btn-add-budget').addEventListener('click', () => {
+  document.getElementById('bgt-month').value = monthPicker.value;
+  document.getElementById('modal-budget').classList.add('open');
+  document.body.style.overflow = 'hidden';
+});
+function closeModal() {
+  document.getElementById('modal-budget').classList.remove('open');
+  document.getElementById('form-budget').reset();
+  document.body.style.overflow = '';
+}
+document.getElementById('modal-close').addEventListener('click', closeModal);
+document.getElementById('btn-cancel').addEventListener('click',  closeModal);
+document.getElementById('modal-budget').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
+
+// ── Save ──────────────────────────────────────────────────────────────────
+document.getElementById('form-budget').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = document.getElementById('btn-save-budget');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Saving…';
+  try {
+    await api.post('/budgets', {
+      category:     document.getElementById('bgt-category').value,
+      monthlyLimit: parseFloat(document.getElementById('bgt-amount').value),
+      month:        document.getElementById('bgt-month').value
+    });
+    Toast.success('Budget saved!');
+    monthPicker.value = document.getElementById('bgt-month').value;
+    closeModal(); loadBudgets();
+  } catch (err) { Toast.error(err.message || 'Failed to save'); }
+  finally { btn.disabled = false; btn.innerHTML = 'Save Budget'; }
+});
+
+loadBudgets();
+</script>
+</body>
+</html>

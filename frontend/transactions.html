@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="theme-color" content="#13161e"/>
+  <title>SpendWise — Transactions</title>
+  <link rel="stylesheet" href="style.css"/>
+  <style>
+    #tx-mobile-cards   { display: none; }
+    #pagination-mobile { display: none; }
+    @media (max-width: 768px) {
+      #tx-desktop-wrap   { display: none; }
+      #tx-mobile-cards   { display: block; }
+      #pagination-mobile { display: flex; }
+    }
+    .tx-card {
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 14px; margin-bottom: 10px;
+    }
+    .tx-card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; gap: 8px; }
+    .tx-card-bottom { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+    .tx-card-actions { display: flex; gap: 6px; }
+  </style>
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebar-mount"></div>
+
+  <div class="main-content">
+    <header class="page-header">
+      <button class="hamburger"><span></span><span></span><span></span></button>
+      <div class="page-title">Transactions</div>
+      <div class="header-actions">
+        <button class="btn btn-ghost btn-sm" id="btn-export">
+          <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+          </svg>
+          <span id="lbl-export">Export</span>
+        </button>
+        <button class="btn btn-primary btn-sm" id="btn-add">
+          <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+          </svg>
+          <span id="lbl-add">Add</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="page-body">
+
+      <!-- Filters -->
+      <div class="filters-bar">
+        <input class="filter-keyword" type="text" id="f-keyword" placeholder="🔍 Search title or note…"/>
+        <select id="f-type">
+          <option value="">All types</option>
+          <option value="income">Income</option>
+          <option value="expense">Expense</option>
+        </select>
+        <select id="f-category"><option value="">All categories</option></select>
+        <input type="date" id="f-from"/>
+        <input type="date" id="f-to"/>
+        <div class="filter-actions">
+          <button class="btn btn-primary btn-sm" id="btn-filter">Apply</button>
+          <button class="btn btn-ghost btn-sm"   id="btn-clear">Clear</button>
+        </div>
+      </div>
+
+      <!-- Desktop table -->
+      <div id="tx-desktop-wrap">
+        <div class="card" style="padding:0;overflow:hidden;">
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th><th>Title</th><th>Category</th><th>Type</th>
+                  <th>Amount</th><th>Note</th><th>Recurring</th>
+                  <th style="text-align:right;">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="tx-tbody">
+                <tr><td colspan="8"><div class="empty-state"><div class="spinner"></div></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="pagination" id="pg-desktop"></div>
+        </div>
+      </div>
+
+      <!-- Mobile cards -->
+      <div id="tx-mobile-cards"></div>
+      <div class="pagination" id="pg-mobile"></div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modal-tx">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <h2 class="modal-title" id="modal-title">Add Transaction</h2>
+      <button class="modal-close" id="modal-close">✕</button>
+    </div>
+    <form id="form-tx">
+      <input type="hidden" id="tx-id"/>
+      <div class="form-group">
+        <label>Title *</label>
+        <input type="text" id="tx-title" placeholder="e.g. Grocery shopping" required/>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Amount (৳) *</label>
+          <input type="number" id="tx-amount" placeholder="0.00" min="0.01" step="0.01" required/>
+        </div>
+        <div class="form-group">
+          <label>Date *</label>
+          <input type="date" id="tx-date" required/>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Type *</label>
+          <select id="tx-type" required>
+            <option value="">Select type</option>
+            <option value="income">Income</option>
+            <option value="expense">Expense</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Category *</label>
+          <select id="tx-category" required><option value="">Select category</option></select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Note (optional)</label>
+        <textarea id="tx-note" placeholder="Any additional details…" rows="2"></textarea>
+      </div>
+      <div class="form-group">
+        <div class="checkbox-group">
+          <input type="checkbox" id="tx-recurring"/>
+          <label for="tx-recurring">Recurring transaction</label>
+        </div>
+      </div>
+      <div class="form-group hidden" id="freq-group">
+        <label>Frequency</label>
+        <select id="tx-frequency">
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly" selected>Monthly</option>
+          <option value="yearly">Yearly</option>
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost"   id="btn-cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="btn-save">Save Transaction</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script>
+document.getElementById('sidebar-mount').innerHTML = SIDEBAR_HTML;
+if (!initPage()) throw new Error();
+
+// Full labels on wider screens
+if (window.innerWidth > 480) {
+  document.getElementById('lbl-add').textContent    = 'Add Transaction';
+  document.getElementById('lbl-export').textContent = 'Export CSV';
+}
+
+// Populate categories
+CATEGORIES.forEach(c => {
+  document.getElementById('f-category').innerHTML  += `<option value="${c}">${c}</option>`;
+  document.getElementById('tx-category').innerHTML += `<option value="${c}">${c}</option>`;
+});
+
+let currentPage = 0, totalPages = 0, editingId = null;
+
+function getFilters() {
+  return {
+    keyword:  document.getElementById('f-keyword').value.trim(),
+    type:     document.getElementById('f-type').value,
+    category: document.getElementById('f-category').value,
+    fromDate: document.getElementById('f-from').value,
+    toDate:   document.getElementById('f-to').value,
+    page: currentPage, size: 10
+  };
+}
+
+// ── Load ──────────────────────────────────────────────────────────────────
+async function load() {
+  const tbody   = document.getElementById('tx-tbody');
+  const cardsEl = document.getElementById('tx-mobile-cards');
+  tbody.innerHTML   = '<tr><td colspan="8"><div class="empty-state"><div class="spinner"></div></div></td></tr>';
+  cardsEl.innerHTML = '<div class="empty-state"><div class="spinner"></div></div>';
+
+  try {
+    const res  = await api.get('/transactions', getFilters());
+    const page = res.data;
+    totalPages = page.totalPages;
+
+    if (!page.content.length) {
+      const emp = '<div class="empty-state" style="padding:50px 20px;"><div class="empty-icon">🧾</div><p>No transactions found</p></div>';
+      tbody.innerHTML   = `<tr><td colspan="8">${emp}</td></tr>`;
+      cardsEl.innerHTML = emp;
+      renderPagination(0, 0);
+      return;
+    }
+
+    // Desktop rows
+    tbody.innerHTML = page.content.map(t => `
+      <tr>
+        <td class="text-sm" style="white-space:nowrap;">${fmt.date(t.date)}</td>
+        <td><strong>${t.title}</strong></td>
+        <td><span class="text-sm text-muted">${t.category}</span></td>
+        <td><span class="badge badge-${t.type}">${fmt.capitalize(t.type)}</span></td>
+        <td class="${t.type==='income'?'text-income':'text-expense'}" style="font-weight:700;white-space:nowrap;">
+          ${t.type==='income'?'+':'-'}${fmt.currency(t.amount)}
+        </td>
+        <td class="text-sm text-muted" style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+          ${t.note||'—'}
+        </td>
+        <td>${t.isRecurring ? `<span class="badge badge-recurring">↻ ${fmt.capitalize(t.recurringFrequency||'')}</span>` : '<span class="text-muted">—</span>'}</td>
+        <td style="text-align:right;">
+          <div style="display:flex;gap:6px;justify-content:flex-end;">
+            <button class="btn btn-ghost btn-sm btn-icon" onclick="editTx('${t.id}')">✏️</button>
+            <button class="btn btn-danger btn-sm btn-icon" onclick="deleteTx('${t.id}','${t.title.replace(/'/g,"\\'")}')">🗑️</button>
+          </div>
+        </td>
+      </tr>`).join('');
+
+    // Mobile cards
+    cardsEl.innerHTML = page.content.map(t => `
+      <div class="tx-card">
+        <div class="tx-card-top">
+          <div style="min-width:0;flex:1;">
+            <div style="font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.title}</div>
+            <div class="text-muted text-xs" style="margin-top:3px;">${t.category} · ${fmt.date(t.date)}</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0;">
+            <div class="${t.type==='income'?'text-income':'text-expense'}" style="font-weight:700;font-size:17px;white-space:nowrap;">
+              ${t.type==='income'?'+':'-'}${fmt.currency(t.amount)}
+            </div>
+            <span class="badge badge-${t.type}" style="margin-top:4px;">${fmt.capitalize(t.type)}</span>
+          </div>
+        </div>
+        <div class="tx-card-bottom">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+            ${t.isRecurring ? `<span class="badge badge-recurring">↻ ${fmt.capitalize(t.recurringFrequency||'')}</span>` : ''}
+            ${t.note ? `<span class="text-muted text-xs" style="font-style:italic;">"${t.note}"</span>` : ''}
+          </div>
+          <div class="tx-card-actions">
+            <button class="btn btn-ghost btn-sm" onclick="editTx('${t.id}')">✏️ Edit</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteTx('${t.id}','${t.title.replace(/'/g,"\\'")}')">🗑️</button>
+          </div>
+        </div>
+      </div>`).join('');
+
+    renderPagination(page.number, page.totalPages);
+  } catch (err) { Toast.error('Failed to load transactions'); }
+}
+
+// ── Pagination ────────────────────────────────────────────────────────────
+function renderPagination(cur, total) {
+  const d = document.getElementById('pg-desktop');
+  const m = document.getElementById('pg-mobile');
+  if (total <= 1) { d.innerHTML = m.innerHTML = ''; return; }
+  const h = () => {
+    let s = `<button class="page-btn" onclick="goTo(${cur-1})" ${cur===0?'disabled':''}>‹</button>`;
+    for (let i = 0; i < total; i++) s += `<button class="page-btn ${i===cur?'active':''}" onclick="goTo(${i})">${i+1}</button>`;
+    s += `<button class="page-btn" onclick="goTo(${cur+1})" ${cur===total-1?'disabled':''}>›</button>`;
+    return s;
+  };
+  d.innerHTML = h(); m.innerHTML = h();
+}
+
+function goTo(p) {
+  if (p < 0 || p >= totalPages) return;
+  currentPage = p; load();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ── Modal helpers ─────────────────────────────────────────────────────────
+function openModal(title) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-tx').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeModal() {
+  document.getElementById('modal-tx').classList.remove('open');
+  document.getElementById('form-tx').reset();
+  document.getElementById('tx-id').value = '';
+  document.getElementById('freq-group').classList.add('hidden');
+  document.body.style.overflow = '';
+  editingId = null;
+}
+
+document.getElementById('btn-add').addEventListener('click', () => {
+  editingId = null;
+  document.getElementById('tx-date').value = new Date().toISOString().slice(0,10);
+  openModal('Add Transaction');
+});
+document.getElementById('modal-close').addEventListener('click', closeModal);
+document.getElementById('btn-cancel').addEventListener('click',  closeModal);
+document.getElementById('modal-tx').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
+document.getElementById('tx-recurring').addEventListener('change', e => {
+  document.getElementById('freq-group').classList.toggle('hidden', !e.target.checked);
+});
+
+// ── Edit ──────────────────────────────────────────────────────────────────
+async function editTx(id) {
+  try {
+    const res = await api.get(`/transactions/${id}`);
+    const t   = res.data;
+    editingId = id;
+    document.getElementById('tx-id').value       = t.id;
+    document.getElementById('tx-title').value    = t.title;
+    document.getElementById('tx-amount').value   = t.amount;
+    document.getElementById('tx-type').value     = t.type;
+    document.getElementById('tx-category').value = t.category;
+    document.getElementById('tx-date').value     = t.date;
+    document.getElementById('tx-note').value     = t.note || '';
+    document.getElementById('tx-recurring').checked = t.isRecurring;
+    if (t.isRecurring) {
+      document.getElementById('freq-group').classList.remove('hidden');
+      document.getElementById('tx-frequency').value = t.recurringFrequency || 'monthly';
+    }
+    openModal('Edit Transaction');
+  } catch (err) { Toast.error('Failed to load transaction'); }
+}
+
+// ── Delete ────────────────────────────────────────────────────────────────
+async function deleteTx(id, title) {
+  if (!confirm(`Delete "${title}"?`)) return;
+  try { await api.delete(`/transactions/${id}`); Toast.success('Deleted!'); load(); }
+  catch (err) { Toast.error('Failed to delete'); }
+}
+
+// ── Save ──────────────────────────────────────────────────────────────────
+document.getElementById('form-tx').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = document.getElementById('btn-save');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Saving…';
+  const recurring = document.getElementById('tx-recurring').checked;
+  const payload = {
+    title:              document.getElementById('tx-title').value.trim(),
+    amount:             parseFloat(document.getElementById('tx-amount').value),
+    type:               document.getElementById('tx-type').value,
+    category:           document.getElementById('tx-category').value,
+    date:               document.getElementById('tx-date').value,
+    note:               document.getElementById('tx-note').value.trim(),
+    isRecurring:        recurring,
+    recurringFrequency: recurring ? document.getElementById('tx-frequency').value : null
+  };
+  try {
+    if (editingId) { await api.put(`/transactions/${editingId}`, payload); Toast.success('Updated!'); }
+    else           { await api.post('/transactions', payload);             Toast.success('Added!');   }
+    closeModal(); load();
+  } catch (err) { Toast.error(err.message || 'Failed to save'); }
+  finally { btn.disabled = false; btn.innerHTML = 'Save Transaction'; }
+});
+
+// ── Filters ───────────────────────────────────────────────────────────────
+document.getElementById('btn-filter').addEventListener('click', () => { currentPage = 0; load(); });
+document.getElementById('btn-clear').addEventListener('click', () => {
+  ['f-keyword','f-type','f-category','f-from','f-to'].forEach(id => document.getElementById(id).value = '');
+  currentPage = 0; load();
+});
+document.getElementById('f-keyword').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { currentPage = 0; load(); }
+});
+
+// ── Export ────────────────────────────────────────────────────────────────
+document.getElementById('btn-export').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-export');
+  const orig = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+  try {
+    const f = getFilters();
+    await api.downloadCsv({ fromDate: f.fromDate, toDate: f.toDate, category: f.category, type: f.type });
+    Toast.success('CSV downloaded!');
+  } catch (err) { Toast.error('Export failed'); }
+  finally { btn.disabled = false; btn.innerHTML = orig; }
+});
+
+load();
+</script>
+</body>
+</html>

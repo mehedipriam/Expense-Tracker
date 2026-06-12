@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="theme-color" content="#13161e"/>
+  <title>SpendWise — Dashboard</title>
+  <link rel="stylesheet" href="style.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebar-mount"></div>
+
+  <div class="main-content">
+    <header class="page-header">
+      <button class="hamburger" aria-label="Toggle menu">
+        <span></span><span></span><span></span>
+      </button>
+      <div class="page-title">
+        Dashboard
+        <div class="subtitle" id="dash-subtitle"></div>
+      </div>
+      <div class="header-actions">
+        <span class="text-muted text-sm" id="dash-date" style="display:none;"></span>
+      </div>
+    </header>
+
+    <div class="page-body">
+
+      <!-- Stats -->
+      <div class="stats-grid">
+        <div class="stat-card income">
+          <div class="stat-label">Total Income</div>
+          <div class="stat-value income" id="stat-income">—</div>
+          <div class="stat-sub">This month</div>
+        </div>
+        <div class="stat-card expense">
+          <div class="stat-label">Total Expenses</div>
+          <div class="stat-value expense" id="stat-expense">—</div>
+          <div class="stat-sub">This month</div>
+        </div>
+        <div class="stat-card balance">
+          <div class="stat-label">Net Balance</div>
+          <div class="stat-value balance" id="stat-balance">—</div>
+          <div class="stat-sub">This month</div>
+        </div>
+      </div>
+
+      <!-- Charts -->
+      <div class="charts-grid">
+        <div class="card">
+          <div class="card-title">Income vs Expenses — Last 6 Months</div>
+          <div class="chart-container"><canvas id="chart-monthly"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Spending by Category</div>
+          <div class="chart-container"><canvas id="chart-category"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Bottom row -->
+      <div class="bottom-row">
+        <div class="card">
+          <div class="card-title">Top Spending Categories</div>
+          <div id="top-categories">
+            <div class="empty-state" style="padding:24px 0;">
+              <div class="empty-icon">📊</div><p>No data yet</p>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="flex items-center justify-between mb-4">
+            <div class="card-title" style="margin:0;">Recent Transactions</div>
+            <a href="transactions.html" class="btn btn-ghost btn-sm">View all</a>
+          </div>
+          <div id="recent-transactions">
+            <div class="empty-state" style="padding:24px 0;">
+              <div class="empty-icon">💳</div><p>No transactions yet</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script>
+document.getElementById('sidebar-mount').innerHTML = SIDEBAR_HTML;
+if (!initPage()) throw new Error('Not authenticated');
+
+const now = new Date();
+document.getElementById('dash-subtitle').textContent =
+  now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+// Show date only on wide screens
+if (window.innerWidth > 768) {
+  const el = document.getElementById('dash-date');
+  el.style.display = 'inline';
+  el.textContent = now.toLocaleDateString('en-GB', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+  });
+}
+
+Chart.defaults.color       = '#6b7394';
+Chart.defaults.borderColor = '#2a2f42';
+Chart.defaults.font.family = "'DM Sans', sans-serif";
+Chart.defaults.font.size   = 12;
+
+let monthlyChart, categoryChart;
+let cachedMonthly = [];
+
+async function loadDashboard() {
+  try {
+    const res = await api.get('/dashboard');
+    const d   = res.data;
+    document.getElementById('stat-income').textContent  = fmt.currency(d.totalIncome);
+    document.getElementById('stat-expense').textContent = fmt.currency(d.totalExpense);
+    document.getElementById('stat-balance').textContent = fmt.currency(d.netBalance);
+    cachedMonthly = d.monthlySummary || [];
+    renderMonthlyChart(cachedMonthly);
+    renderCategoryChart(d.categoryBreakdown || {});
+    renderTopCategories(d.topCategories     || []);
+    renderRecentTx(d.recentTransactions     || []);
+  } catch (err) {
+    Toast.error('Failed to load dashboard');
+  }
+}
+
+function renderMonthlyChart(data) {
+  const mobile  = window.innerWidth <= 600;
+  const labels  = data.map(m => mobile ? m.month.slice(5) : fmt.month(m.month));
+  const incomes = data.map(m => Number(m.income  || 0));
+  const exps    = data.map(m => Number(m.expense || 0));
+  if (monthlyChart) monthlyChart.destroy();
+  monthlyChart = new Chart(document.getElementById('chart-monthly'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Income',  data: incomes, backgroundColor: 'rgba(52,216,122,0.75)',  borderRadius: 5, borderSkipped: false },
+        { label: 'Expense', data: exps,    backgroundColor: 'rgba(255,94,126,0.75)',  borderRadius: 5, borderSkipped: false }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'top', labels: { boxWidth: 10, padding: 10, font: { size: mobile ? 10 : 12 } } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: mobile ? 10 : 12 } } },
+        y: { grid: { color: '#2a2f42' }, ticks: { font: { size: mobile ? 10 : 12 }, callback: v => v >= 1000 ? '৳' + (v/1000).toFixed(0) + 'k' : '৳' + v } }
+      }
+    }
+  });
+}
+
+function renderCategoryChart(data) {
+  const labels = Object.keys(data);
+  const values = Object.values(data).map(Number);
+  if (!labels.length) return;
+  const colors = ['#7c6fff','#34d87a','#ff5e7e','#f5a623','#38bdf8','#e879f9','#fb923c','#a3e635','#f472b6','#60a5fa'];
+  if (categoryChart) categoryChart.destroy();
+  categoryChart = new Chart(document.getElementById('chart-category'), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data: values, backgroundColor: colors.slice(0, labels.length), borderWidth: 2, borderColor: '#13161e', hoverOffset: 6 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '62%',
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 9, padding: 8, font: { size: 11 } } } }
+    }
+  });
+}
+
+function renderTopCategories(cats) {
+  const el = document.getElementById('top-categories');
+  if (!cats.length) { el.innerHTML = '<div class="empty-state" style="padding:24px 0;"><div class="empty-icon">📊</div><p>No data yet</p></div>'; return; }
+  el.innerHTML = cats.map((c, i) => `
+    <div class="category-bar-item">
+      <div class="category-bar-header">
+        <span class="category-bar-name">${i+1}. ${c.category}</span>
+        <span><strong>${fmt.currency(c.amount)}</strong>
+          <span class="category-bar-pct">&nbsp;${c.percentage}%</span></span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${Math.min(c.percentage,100)}%"></div></div>
+    </div>`).join('');
+}
+
+function renderRecentTx(txns) {
+  const el = document.getElementById('recent-transactions');
+  if (!txns.length) { el.innerHTML = '<div class="empty-state" style="padding:24px 0;"><div class="empty-icon">💳</div><p>No transactions yet</p></div>'; return; }
+  el.innerHTML = txns.map(t => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);">
+      <div style="min-width:0;flex:1;padding-right:10px;">
+        <div style="font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.title}</div>
+        <div class="text-muted text-xs">${t.category} · ${fmt.date(t.date)}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0;">
+        <div class="${t.type==='income'?'text-income':'text-expense'}" style="font-weight:700;font-size:14px;white-space:nowrap;">
+          ${t.type==='income'?'+':'-'}${fmt.currency(t.amount)}
+        </div>
+        ${t.isRecurring ? '<span class="badge badge-recurring" style="font-size:10px;">↻</span>' : ''}
+      </div>
+    </div>`).join('');
+}
+
+loadDashboard();
+
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if (cachedMonthly.length) renderMonthlyChart(cachedMonthly); }, 300);
+});
+</script>
+</body>
+</html>

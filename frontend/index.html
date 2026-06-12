@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="theme-color" content="#0d0f14"/>
+  <title>SpendWise — Sign In</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+<div class="auth-page">
+
+  <!-- LOGIN -->
+  <div class="auth-card" id="panel-login">
+    <div class="auth-logo">Spend<span>Wise</span></div>
+    <p class="auth-tagline">Track every taka. Own your future.</p>
+    <form id="form-login" autocomplete="on">
+      <div class="form-group">
+        <label for="login-email">Email address</label>
+        <input type="email" id="login-email" placeholder="you@example.com" required autocomplete="email"/>
+      </div>
+      <div class="form-group">
+        <label for="login-password">Password</label>
+        <input type="password" id="login-password" placeholder="••••••••" required autocomplete="current-password"/>
+      </div>
+      <button type="submit" class="btn btn-primary w-full" id="btn-login"
+              style="margin-top:8px;height:46px;font-size:15px;">Sign in</button>
+    </form>
+    <p class="auth-switch">New here? <a href="#" id="show-register">Create an account</a></p>
+  </div>
+
+  <!-- REGISTER -->
+  <div class="auth-card hidden" id="panel-register">
+    <div class="auth-logo">Spend<span>Wise</span></div>
+    <p class="auth-tagline">Start your financial journey today.</p>
+    <form id="form-register" autocomplete="on">
+      <div class="form-group">
+        <label for="reg-name">Full name</label>
+        <input type="text" id="reg-name" placeholder="Jane Doe" required autocomplete="name"/>
+      </div>
+      <div class="form-group">
+        <label for="reg-email">Email address</label>
+        <input type="email" id="reg-email" placeholder="you@example.com" required autocomplete="email"/>
+      </div>
+      <div class="form-group">
+        <label for="reg-password">Password <span class="text-muted" style="font-weight:400;">(min 6 chars)</span></label>
+        <input type="password" id="reg-password" placeholder="••••••••" required minlength="6" autocomplete="new-password"/>
+      </div>
+      <button type="submit" class="btn btn-primary w-full" id="btn-register"
+              style="margin-top:8px;height:46px;font-size:15px;">Create account</button>
+    </form>
+    <p class="auth-switch">Already have an account? <a href="#" id="show-login">Sign in</a></p>
+  </div>
+
+</div>
+<script src="app.js"></script>
+<script>
+  if (Auth.isLoggedIn()) window.location.href = 'dashboard.html';
+
+  document.getElementById('show-register').addEventListener('click', e => {
+    e.preventDefault();
+    document.getElementById('panel-login').classList.add('hidden');
+    document.getElementById('panel-register').classList.remove('hidden');
+  });
+  document.getElementById('show-login').addEventListener('click', e => {
+    e.preventDefault();
+    document.getElementById('panel-register').classList.add('hidden');
+    document.getElementById('panel-login').classList.remove('hidden');
+  });
+
+  document.getElementById('form-login').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = document.getElementById('btn-login');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+    try {
+      const res = await api.post('/auth/login', {
+        email: document.getElementById('login-email').value.trim(),
+        password: document.getElementById('login-password').value
+      });
+      Auth.save(res.data.token, { id: res.data.userId, name: res.data.name, email: res.data.email });
+      Toast.success('Welcome back, ' + res.data.name + '!');
+      setTimeout(() => window.location.href = 'dashboard.html', 500);
+    } catch (err) {
+      Toast.error(err.message || 'Login failed');
+      btn.disabled = false; btn.innerHTML = 'Sign in';
+    }
+  });
+
+  document.getElementById('form-register').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = document.getElementById('btn-register');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+    try {
+      const res = await api.post('/auth/register', {
+        name: document.getElementById('reg-name').value.trim(),
+        email: document.getElementById('reg-email').value.trim(),
+        password: document.getElementById('reg-password').value
+      });
+      Auth.save(res.data.token, { id: res.data.userId, name: res.data.name, email: res.data.email });
+      Toast.success('Account created! Welcome, ' + res.data.name + '!');
+      setTimeout(() => window.location.href = 'dashboard.html', 500);
+    } catch (err) {
+      Toast.error(err.message || 'Registration failed');
+      btn.disabled = false; btn.innerHTML = 'Create account';
+    }
+  });
+</script>
+</body>
+</html>
